@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-time Log Manager</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    #logDisplay {
+      border: 1px solid #ccc;
+      padding: 10px;
+      height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    #saveLogBtn {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Real-time Log Manager</h1>
+  <button id="saveLogBtn">Save Logs</button>
+  <pre id="logDisplay"></pre>
+  
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const logBuffer = [];
+    const logLimit = 10;
+    const logDisplay = document.getElementById('logDisplay');
+    const saveLogBtn = document.getElementById('saveLogBtn');
+    let loggingEnabled = true;
+
+    function addLogEntry(message) {
+      if (!loggingEnabled) return;
+      if (logBuffer.length >= logLimit) {
+        logBuffer.shift(); // Remove the oldest log
+      }
+      logBuffer.push(message); // Add the new log
+      console.log(message); // Print to console
+      updateLogDisplay(); // Update the display
+      sendLogToServer(message); // Send to server
+    }
+
+    function updateLogDisplay() {
+      logDisplay.textContent = logBuffer.join('\n');
+      logDisplay.scrollTop = logDisplay.scrollHeight; // Auto-scroll to bottom
+    }
+
+    function sendLogToServer(message) {
+      if (socket.connected) {
+        socket.emit('log', message);
+      } else {
+        console.warn('Unable to send log to server; WebSocket is disconnected.');
+      }
+    }
+
+    socket.on('connect', () => {
+      console.log('Connected to server');
+      loggingEnabled = true;
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+      loggingEnabled = false; // Stop logging when disconnected
+    });
+
+    setInterval(() => {
+      const timestamp = new Date().toISOString();
+      addLogEntry(`Log entry at ${timestamp}`);
+    }, 1000);
+
+    socket.on('initialLogs', (logs) => {
+      logBuffer.push(...logs);
+      updateLogDisplay();
+    });
+
+    socket.on('updateLogs', (logs) => {
+      logBuffer.splice(0, logBuffer.length, ...logs);
+      updateLogDisplay();
+    });
+
+    function saveLogs() {
+      try {
+        const logContent = logBuffer.join('\n');
+        const blob = new Blob([logContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'log.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error('Error saving log file:', error);
+      }
+    }
+
+    saveLogBtn.addEventListener('click', saveLogs);
+  </script>
+</body>
+</html>
